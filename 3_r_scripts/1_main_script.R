@@ -1,92 +1,1179 @@
-###
-# I always start my scripts with a header giving a brief description of the purpose of the script.
-# In this case, the goal is to make a template for new analyses in the lab and to describe why
-# parts of the project folder are organized the way they are.
-#
-# Written by: Sabrina McNew & Conor Taff
-# Last updated: 10/13/2020
-# Run under R Studio 1.1.463 on Mac OSX 10.11.6
-# See markdown file for saving session info. If you aren't working in markdown it is also 
-# good practice to record package versions here.
+## Tree swallow corticosterone and weather analysis
 
-# Load packages ----
-  # Ending the line above with four dashes or four hashtags puts the chunk into your outline below. 
-  # This makes it a lot easier to find things later in a long script. Another way to create sections 
-  # is with "command + shift + R" in Rstudio. 
+## Load packages ----
+    pacman::p_load(tidyverse, here, plyr, sjPlot, lme4, lmerTest, ggpubr)
+      
 
-  # I like to load all packages up front using 'pacman'. This way you can see right at the beginning
-  # what is required and you are less likely to break your code when modifying it by moving a line
-  # up to before the required package was loaded. I have a few packages I almost always load, but most
-  # of these would change each time depending on the project. Just remember to add packages to the list
-  # up here when you want to use them. You'll get an error if these packages aren't installed on your local
-  # machine yet and will need to run install.packages(xxx)
-    pacman::p_load(tidyverse, here, plyr, sjPlot)
-      # 'here' is useful for referring to relative path names in your project directory.
+## Load data ----
+  # Load data for each birds capture
+      db <- read.delim(here::here("1_raw_data/data_by_capture.txt"))
+      # Subset to non invasive experiments
+        db <- subset(db, db$ok_for_weather == "yes")
+        
+      # Capture hour
+        db$cap_hr <- round(db$cap_time / 60, 0)
 
-# Load data ----
-  # here is where I would load any raw data that you have added to the project
-  # I'm reading in two files from
-    #https://knowledge.domo.com/Training/Self-Service_Training/Onboarding_Resources/Fun_Sample_Datasets
-    d_hero <- read.delim(here::here("1_raw_data/raw_hero_data.txt"))      #super hero attributes
-    d_power <- read.delim(here::here("1_raw_data/raw_hero_power.txt"))    #super hero powers
+          ##NOTE: about 400 samples have a raw value but no corrected values. For now I'm just assuming efficiency of 85%, but these
+            # should be fixed in the database
+            for(i in 1:nrow(db)){
+              if(is.na(db$cort1_correct[i]) == TRUE){
+                if(is.na(db$cort1_raw[i]) == FALSE){db$cort1_correct[i] <- db$cort1_raw[i] * (100/85)}
+              }
+              if(is.na(db$cort2_correct[i]) == TRUE){
+                if(is.na(db$cort1_raw[i]) == FALSE){db$cort2_correct[i] <- db$cort2_raw[i] * (100/85)}
+              }
+              if(is.na(db$cort3_correct[i]) == TRUE){
+                if(is.na(db$cort1_raw[i]) == FALSE){db$cort3_correct[i] <- db$cort3_raw[i] * (100/85)}
+              }
+            }
+        
+        db <- subset(db, db$cort1_correct > 0)
+      
+  # Load weather data
+      dw <- read.delim(here::here("1_raw_data/Input_Weather_Data.txt"))
+    
+      # Subset to just the airport station
+        dw <- subset(dw, dw$station == "Airport")
 
-# Clean up data
-    # Make any kind of exclusions you want here and document them well. Apply transformations to columns or 
-    # standardize them in some way.
-    # You might change column names here too (though maybe that should be done when you make the files). 
-      colnames(d_power)[1] <- "name"    #I changed this to match the other data file.
+## Add weather data to each capture
         
-# Set values ----
-    
-    # Any values that you are setting that will be used through the script should go here. For example
-    # if you have a control and treatment group, you can set plotting colors for them here. Then everywhere
-    # you plot below you can refer to these objects. That way changing the color for all treatment plots can
-    # be done by changing one line of code here. The same logic applies to any values that you might want to change
-    # later on. This is a LOT easier than finding every place in the code where you might want to change things later.
-    
-        control_color <- "slateblue"
-        treatment_color <- "orange"
+    for(i in 1:nrow(db)){
+      sub <- subset(dw, dw$year == db$year[i])
+      sub1 <- subset(sub, sub$doy == db$cap_doy[i] & sub$hour < db$cap_hr[i] + 1 & sub$hour > db$cap_hr[i] - 3)
+      sub1b <- subset(sub, sub$doy == db$cap_doy[i] & sub$hour < 9 & sub$hour > 5)
+      sub2a <- subset(sub, sub$doy == db$cap_doy[i] | sub$doy == db$cap_doy[i] - 1)
+      sub2 <- subset(sub2a, sub2a$hour > 21 | sub2a$hour < 6)
+      sub3 <- subset(sub, sub$doy == db$cap_doy[i] - 1 & sub$hour > 5 & sub$hour < 21)
+      sub4 <- subset(sub, sub$doy < db$cap_doy[i] & sub$doy > db$cap_doy[i] - 4 & sub$hour > 5 & sub$hour < 21)
+      sub5 <- subset(sub, sub$doy < db$cap_doy[i] & sub$doy > db$cap_doy[i] - 8 & sub$hour > 5 & sub$hour < 21)
+      
+      db$t_3cap_av[i] <- mean(sub1$avg_temp_C)
+      db$t_m_av[i] <- mean(sub1b$avg_temp_C)
+      db$t_nb_av[i] <- mean(sub2$avg_temp_C)
+      db$t_nb_lo[i] <- min(na.omit(sub2$avg_temp_C))
+      db$t_db_av[i] <- mean(sub3$avg_temp_C)
+      db$t_db_hi[i] <- max(na.omit(sub3$avg_temp_C))
+      db$t_3b_av[i] <- mean(sub4$avg_temp_C)
+      db$t_3b_hi[i] <- max(na.omit(sub4$avg_temp_C))
+      db$t_7b_av[i] <- mean(sub5$avg_temp_C)
+      db$t_7b_hi[i] <- max(na.omit(sub5$avg_temp_C))
+     
+      print(paste0(i, " of ", nrow(db)))
+    }
         
-# Make some new data ----
         
-  # If you'll need to join or modify data that will be used throughout, it's good to do that at the beginning here.
-        full_hero_data <- join(d_hero, d_power, "name", "left", "first")
-        
+    saveRDS(db, here::here("2_modified_data/cort_plus_temperature.txt"))  
     
-  # In this case the object made is small and fast, but if you made something that took a lot of computation time you
-        # can save here here by writing it to your folders
-          write.table(full_hero_data, here::here("2_modified_data/full_hero_data.txt"), sep = "\t")
-        
-        # You could also save the thing you made as an r object instead that you can load again later. This is 
-          # especially useful for things like large models etc that can't be written to a plain column. For microbiome
-          # or diet analyses, after running the full pipeline you can save the final objects and then just reload
-          # them to pickup where you left off rather than having to run the full pipeline again.
-          saveRDS(full_hero_data, here::here("5_other_outputs/full_hero_data.rds"))
-          full_hero_data <- readRDS(here::here("5_other_outputs/full_hero_data.rds"))
+## Fix some inf values
+    db$t_nb_lo[which(!is.finite(db$t_nb_lo))] <- NA
     
-# Analysis and figures ----
-    # Carry on with sections for all your different analyses and figures. If you have a lot of separate sections,
-        # you can split them into separate scripts.
-          hero_fig <- full_hero_data %>%
-            filter(Height > 1, Weight > 1, Alignment != "-", Gender != "-") %>%
-            ggplot(aes(x = Height, y = Weight, color = Alignment)) +
-            geom_point() + facet_wrap(~ Gender)
-          
-        # save here if you want to include in your markdown summary  
-          # note that if your markdown output is html, saving as a pdf doesn't work well
-          ggsave(here::here("3_r_scripts/hero_figure.png"), device = "png", width = 8, height = 4.5, units = "in")
-        # save here if you want to just keep the figure to add into a manuscript, etc, later
-          ggsave(here::here("4_output_figures/hero_figure.pdf"), device = "pdf") 
-          
-          
-    # Fit a simple model and save the table
-          fhd2 <- subset(full_hero_data, full_hero_data$Alignment == "good" |
-                           full_hero_data$Alignment == "bad" |
-                           full_hero_data$Alignment == "neutral")
-          fhd2 <- subset(fhd2, fhd2$Gender == "Female" | fhd2$Gender == "Male")
-          m <- glm(Height ~ Alignment + Gender, data = fhd2, na.action = na.exclude)
-          m2 <- glm(Weight ~ Alignment + Gender, data = fhd2, na.action = na.exclude)
-          save_table <- tab_model(m, m2, 
-                    pred.labels = c("Intercept (align evil; female)", "Alignment Good", "Alignment Neutral", "Gender (male)"))
-          saveRDS(save_table, here::here("5_other_outputs/hero_table.rds"))
-    
+## Split out adults and nestlings
+    db$lat_min <- db$latency / 60
+    dba <- subset(db, db$adult_or_nestling == "Adult")
+    dbn <- subset(db, db$adult_or_nestling == "Nestling")
+ 
+# Base cort datasets ----
+    base_a <- subset(dba, dba$type1 == "B")
+    base_n <- subset(dbn, dbn$type1 == "B")
+    base_af <- subset(base_a, base_a$sex == "F")
+    base_am <- subset(base_a, base_a$sex == "M")
+
+### Base cort 3 hours prior or morning of ----
+    # morning of baseline
+      mbaf <- lmer(cort1_correct ~ t_m_av + as.factor(cap_num) + lat_min + (1|band),
+                 data = base_af)
+      mbam <- lmer(cort1_correct ~ t_3cap_av + lat_min + (1|band),
+                  data = base_am)
+      mbn <- lm(cort1_correct ~ t_3cap_av + lat_min,
+                 data = base_n)
+      
+      t_1 <- tab_model(mbaf, mbam, mbn, 
+                dv.labels = c("Adult Female Baseline", "Adult Male Baseline", "Nestling Baseline"),
+                pred.labels = c("Intercept", "Temperature 6-8am (C)", "Capture 2", "Capture 3", "Latency (min)", "Temperature 3 hrs prior (C)"),
+                title = "Average temperature 3 hours before capture.")
+      saveRDS(t_1, here::here("5_other_outputs/table1.rds"))
+      
+    # make plots for these three on normal scale and on log scale
+      
+      p1 <- ggplot(data = base_af, mapping = aes(x = t_m_av, y = cort1_correct, col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") + ylim(0, 50) + 
+        theme_classic() + xlab("Avg Temp 6-8 a.m. (C)") + 
+        ylab(expression(paste("Corticosterone ng/", mu, "l"))) + ggtitle("Adult Females")
+      
+      p2 <- ggplot(data = base_am, mapping = aes(x = t_3cap_av, y = cort1_correct, col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") +  
+        theme_classic() + xlab("Avg Temp 3 Hours Prior (C)") + 
+        ylab(expression(paste("Corticosterone ng/", mu, "l"))) + ggtitle("Adult Males") + ylim(0, 50)
+      
+      p3 <- ggplot(data = base_n, mapping = aes(x = t_3cap_av, y = cort1_correct, col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") +  
+        theme_classic() + xlab("Avg Temp 3 Hours Prior (C)") + 
+        ylab(expression(paste("Corticosterone ng/", mu, "l"))) + ggtitle("Nestlings") + ylim(0, 100)
+      
+      g1 <- ggarrange(p1, p2, p3, ncol = 3, nrow = 1)
+      
+      ggsave(here::here("3_r_scripts/fig1.png"), plot = g1, width = 7.8, height = 2.7, units = "in", device = "png")
+      
+    # morning of baseline
+      mbaf <- lmer(log(cort1_correct + 1) ~ t_m_av + as.factor(cap_num) + lat_min + (1|band),
+                   data = base_af)
+      mbam <- lmer(log(cort1_correct + 1) ~ t_3cap_av + lat_min + (1|band),
+                   data = base_am)
+      mbn <- lm(log(cort1_correct + 1) ~ t_3cap_av + lat_min,
+                data = base_n)
+      
+      t_1 <- tab_model(mbaf, mbam, mbn, 
+                       dv.labels = c("Adult Female Baseline", "Adult Male Baseline", "Nestling Baseline"),
+                       pred.labels = c("Intercept", "Temperature 6-8am (C)", "Capture 2", "Capture 3", "Latency (min)", "Temperature 3 hrs prior (C)"),
+                       title = "Average temperature 3 hours before capture.")
+      saveRDS(t_1, here::here("5_other_outputs/table2.rds"))
+      
+    # make plots for these three on normal scale and on log scale
+      
+      p1 <- ggplot(data = base_af, mapping = aes(x = t_m_av, y = log(cort1_correct + 1), col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") + 
+        theme_classic() + xlab("Avg Temp 6-8 a.m. (C)") + ylim(0.35, 5) +
+        ylab(expression(paste("log(Corticosterone ng/", mu, "l)"))) + ggtitle("Adult Females")
+      
+      p2 <- ggplot(data = base_am, mapping = aes(x = t_3cap_av, y = log(cort1_correct + 1), col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") +  
+        theme_classic() + xlab("Avg Temp 3 Hours Prior (C)") + ylim(0.35, 5) +
+        ylab(expression(paste("log(Corticosterone ng/", mu, "l)"))) + ggtitle("Adult Males")
+      
+      p3 <- ggplot(data = base_n, mapping = aes(x = t_3cap_av, y = log(cort1_correct + 1), col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") +  
+        theme_classic() + xlab("Avg Temp 3 Hours Prior (C)") + ylim(0.35, 5) + 
+        ylab(expression(paste("log(Corticosterone ng/", mu, "l)"))) + ggtitle("Nestlings")
+      
+      g1 <- ggarrange(p1, p2, p3, ncol = 3, nrow = 1)
+      
+      ggsave(here::here("3_r_scripts/fig2.png"), plot = g1, width = 7.8, height = 2.7, units = "in", device = "png")
+      
+### Base cort avg temperature from previous night ----
+           
+    # night before average temperature
+      mbaf <- lmer(cort1_correct ~ t_nb_av + as.factor(cap_num) + lat_min + (1|band),
+                   data = base_af)
+      mbam <- lmer(cort1_correct ~ t_nb_av + lat_min + (1|band),
+                   data = base_am)
+      mbn <- lm(cort1_correct ~ t_nb_av + lat_min,
+                data = base_n)
+      
+      t_1 <- tab_model(mbaf, mbam, mbn, 
+                       dv.labels = c("Adult Female Baseline", "Adult Male Baseline", "Nestling Baseline"),
+                       pred.labels = c("Intercept", "Temperature (C)", "Capture 2", "Capture 3", "Latency (min)"),
+                       title = "Low temperature previous night.")
+      saveRDS(t_1, here::here("5_other_outputs/table3.rds"))
+      
+    # make plots for these three on normal scale and on log scale
+      
+      p1 <- ggplot(data = base_af, mapping = aes(x = t_nb_av, y = cort1_correct, col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") + ylim(0, 50) + 
+        theme_classic() + xlab("Avg Temp Last Night (C)") + 
+        ylab(expression(paste("Corticosterone ng/", mu, "l"))) + ggtitle("Adult Females")
+      
+      p2 <- ggplot(data = base_am, mapping = aes(x = t_nb_av, y = cort1_correct, col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") +  
+        theme_classic() + xlab("Avg Temp Last Night (C)") + 
+        ylab(expression(paste("Corticosterone ng/", mu, "l"))) + ggtitle("Adult Males") + ylim(0, 50)
+      
+      p3 <- ggplot(data = base_n, mapping = aes(x = t_nb_av, y = cort1_correct, col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") +  
+        theme_classic() + xlab("Avg Temp Last Night (C)") + 
+        ylab(expression(paste("Corticosterone ng/", mu, "l"))) + ggtitle("Nestlings") + ylim(0, 100)
+      
+      g1 <- ggarrange(p1, p2, p3, ncol = 3, nrow = 1)
+      
+      ggsave(here::here("3_r_scripts/fig3.png"), plot = g1, width = 7.8, height = 2.7, units = "in", device = "png")
+      
+    # log cort night before average
+      mbaf <- lmer(log(cort1_correct + 1) ~ t_nb_av + as.factor(cap_num) + lat_min + (1|band),
+                   data = base_af)
+      mbam <- lmer(log(cort1_correct + 1) ~ t_nb_av + lat_min + (1|band),
+                   data = base_am)
+      mbn <- lm(log(cort1_correct + 1) ~ t_nb_av + lat_min,
+                data = base_n)
+      
+      t_1 <- tab_model(mbaf, mbam, mbn, 
+                       dv.labels = c("Adult Female Baseline", "Adult Male Baseline", "Nestling Baseline"),
+                       pred.labels = c("Intercept", "Temperature (C)", "Capture 2", "Capture 3", "Latency (min)"),
+                       title = "Average temperature 3 hours before capture.")
+      saveRDS(t_1, here::here("5_other_outputs/table4.rds"))
+      
+      # make plots for these three on normal scale and on log scale
+      
+      p1 <- ggplot(data = base_af, mapping = aes(x = t_nb_av, y = log(cort1_correct + 1), col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") + 
+        theme_classic() + xlab("Avg Temp Last Night (C)") + ylim(0.35, 5) +
+        ylab(expression(paste("log(Corticosterone ng/", mu, "l)"))) + ggtitle("Adult Females")
+      
+      p2 <- ggplot(data = base_am, mapping = aes(x = t_nb_av, y = log(cort1_correct + 1), col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") +  
+        theme_classic() + xlab("Avg Temp Last Night (C)") + ylim(0.35, 5) +
+        ylab(expression(paste("log(Corticosterone ng/", mu, "l)"))) + ggtitle("Adult Males")
+      
+      p3 <- ggplot(data = base_n, mapping = aes(x = t_nb_av, y = log(cort1_correct + 1), col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") +  
+        theme_classic() + xlab("Avg Temp Last Night (C)") + ylim(0.35, 5) + 
+        ylab(expression(paste("log(Corticosterone ng/", mu, "l)"))) + ggtitle("Nestlings")
+      
+      g1 <- ggarrange(p1, p2, p3, ncol = 3, nrow = 1)
+      
+      ggsave(here::here("3_r_scripts/fig4.png"), plot = g1, width = 7.8, height = 2.7, units = "in", device = "png")
+ 
+      
+      
+### base vs average previous day ----           
+  # average temperature previous day
+      mbaf <- lmer(cort1_correct ~ t_db_av + as.factor(cap_num) + lat_min + (1|band),
+                   data = base_af)
+      mbam <- lmer(cort1_correct ~ t_db_av + lat_min + (1|band),
+                   data = base_am)
+      mbn <- lm(cort1_correct ~ t_db_av + lat_min,
+                data = base_n)
+      
+      t_1 <- tab_model(mbaf, mbam, mbn, 
+                       dv.labels = c("Adult Female Baseline", "Adult Male Baseline", "Nestling Baseline"),
+                       pred.labels = c("Intercept", "Temperature (C)", "Capture 2", "Capture 3", "Latency (min)"),
+                       title = "Average temperature prior day.")
+      saveRDS(t_1, here::here("5_other_outputs/table5.rds"))
+      
+      # make plots for these three on normal scale and on log scale
+      
+      p1 <- ggplot(data = base_af, mapping = aes(x = t_db_av, y = cort1_correct, col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") + ylim(0, 50) + 
+        theme_classic() + xlab("Avg Temp Prior Day (C)") + 
+        ylab(expression(paste("Corticosterone ng/", mu, "l"))) + ggtitle("Adult Females")
+      
+      p2 <- ggplot(data = base_am, mapping = aes(x = t_db_av, y = cort1_correct, col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") +  
+        theme_classic() + xlab("Avg Temp Prior Day (C)") + 
+        ylab(expression(paste("Corticosterone ng/", mu, "l"))) + ggtitle("Adult Males") + ylim(0, 50)
+      
+      p3 <- ggplot(data = base_n, mapping = aes(x = t_db_av, y = cort1_correct, col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") +  
+        theme_classic() + xlab("Avg Temp Prior Day (C)") + 
+        ylab(expression(paste("Corticosterone ng/", mu, "l"))) + ggtitle("Nestlings") + ylim(0, 100)
+      
+      g1 <- ggarrange(p1, p2, p3, ncol = 3, nrow = 1)
+      
+      ggsave(here::here("3_r_scripts/fig5.png"), plot = g1, width = 7.8, height = 2.7, units = "in", device = "png")
+      
+      # log cort night before average
+      mbaf <- lmer(log(cort1_correct + 1) ~ t_db_av + as.factor(cap_num) + lat_min + (1|band),
+                   data = base_af)
+      mbam <- lmer(log(cort1_correct + 1) ~ t_db_av + lat_min + (1|band),
+                   data = base_am)
+      mbn <- lm(log(cort1_correct + 1) ~ t_db_av + lat_min,
+                data = base_n)
+      
+      t_1 <- tab_model(mbaf, mbam, mbn, 
+                       dv.labels = c("Adult Female Baseline", "Adult Male Baseline", "Nestling Baseline"),
+                       pred.labels = c("Intercept", "Temperature (C)", "Capture 2", "Capture 3", "Latency (min)"),
+                       title = "Average temperature prior day.")
+      saveRDS(t_1, here::here("5_other_outputs/table6.rds"))
+      
+      # make plots for these three on normal scale and on log scale
+      
+      p1 <- ggplot(data = base_af, mapping = aes(x = t_db_av, y = log(cort1_correct + 1), col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") + 
+        theme_classic() + xlab("Avg Temp Prior Day (C)") + ylim(0.35, 5) +
+        ylab(expression(paste("log(Corticosterone ng/", mu, "l)"))) + ggtitle("Adult Females")
+      
+      p2 <- ggplot(data = base_am, mapping = aes(x = t_db_av, y = log(cort1_correct + 1), col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") +  
+        theme_classic() + xlab("Avg Temp Prior Day (C)") + ylim(0.35, 5) +
+        ylab(expression(paste("log(Corticosterone ng/", mu, "l)"))) + ggtitle("Adult Males")
+      
+      p3 <- ggplot(data = base_n, mapping = aes(x = t_db_av, y = log(cort1_correct + 1), col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") +  
+        theme_classic() + xlab("Avg Temp Prior Day (C)") + ylim(0.35, 5) + 
+        ylab(expression(paste("log(Corticosterone ng/", mu, "l)"))) + ggtitle("Nestlings")
+      
+      g1 <- ggarrange(p1, p2, p3, ncol = 3, nrow = 1)
+      
+      ggsave(here::here("3_r_scripts/fig6.png"), plot = g1, width = 7.8, height = 2.7, units = "in", device = "png")
+
+      
+### base vs high previous day ----           
+      # average temperature previous day
+      mbaf <- lmer(cort1_correct ~ t_db_hi + as.factor(cap_num) + lat_min + (1|band),
+                   data = base_af)
+      mbam <- lmer(cort1_correct ~ t_db_hi + lat_min + (1|band),
+                   data = base_am)
+      mbn <- lm(cort1_correct ~ t_db_hi + lat_min,
+                data = base_n)
+      
+      t_1 <- tab_model(mbaf, mbam, mbn, 
+                       dv.labels = c("Adult Female Baseline", "Adult Male Baseline", "Nestling Baseline"),
+                       pred.labels = c("Intercept", "Temperature (C)", "Capture 2", "Capture 3", "Latency (min)"),
+                       title = "High temperature prior day.")
+      saveRDS(t_1, here::here("5_other_outputs/table5b.rds"))
+      
+      # make plots for these three on normal scale and on log scale
+      
+      p1 <- ggplot(data = base_af, mapping = aes(x = t_db_hi, y = cort1_correct, col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") + ylim(0, 50) + 
+        theme_classic() + xlab("High Temp Prior Day (C)") + 
+        ylab(expression(paste("Corticosterone ng/", mu, "l"))) + ggtitle("Adult Females")
+      
+      p2 <- ggplot(data = base_am, mapping = aes(x = t_db_hi, y = cort1_correct, col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") +  
+        theme_classic() + xlab("High Temp Prior Day (C)") + 
+        ylab(expression(paste("Corticosterone ng/", mu, "l"))) + ggtitle("Adult Males") + ylim(0, 50)
+      
+      p3 <- ggplot(data = base_n, mapping = aes(x = t_db_hi, y = cort1_correct, col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") +  
+        theme_classic() + xlab("High Temp Prior Day (C)") + 
+        ylab(expression(paste("Corticosterone ng/", mu, "l"))) + ggtitle("Nestlings") + ylim(0, 100)
+      
+      g1 <- ggarrange(p1, p2, p3, ncol = 3, nrow = 1)
+      
+      ggsave(here::here("3_r_scripts/fig5b.png"), plot = g1, width = 7.8, height = 2.7, units = "in", device = "png")
+      
+      # log cort night before average
+      mbaf <- lmer(log(cort1_correct + 1) ~ t_db_hi + as.factor(cap_num) + lat_min + (1|band),
+                   data = base_af)
+      mbam <- lmer(log(cort1_correct + 1) ~ t_db_hi + lat_min + (1|band),
+                   data = base_am)
+      mbn <- lm(log(cort1_correct + 1) ~ t_db_hi + lat_min,
+                data = base_n)
+      
+      t_1 <- tab_model(mbaf, mbam, mbn, 
+                       dv.labels = c("Adult Female Baseline", "Adult Male Baseline", "Nestling Baseline"),
+                       pred.labels = c("Intercept", "Temperature (C)", "Capture 2", "Capture 3", "Latency (min)"),
+                       title = "High temperature prior day.")
+      saveRDS(t_1, here::here("5_other_outputs/table6b.rds"))
+      
+      # make plots for these three on normal scale and on log scale
+      
+      p1 <- ggplot(data = base_af, mapping = aes(x = t_db_hi, y = log(cort1_correct + 1), col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") + 
+        theme_classic() + xlab("High Temp Prior Day (C)") + ylim(0.35, 5) +
+        ylab(expression(paste("log(Corticosterone ng/", mu, "l)"))) + ggtitle("Adult Females")
+      
+      p2 <- ggplot(data = base_am, mapping = aes(x = t_db_hi, y = log(cort1_correct + 1), col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") +  
+        theme_classic() + xlab("High Temp Prior Day (C)") + ylim(0.35, 5) +
+        ylab(expression(paste("log(Corticosterone ng/", mu, "l)"))) + ggtitle("Adult Males")
+      
+      p3 <- ggplot(data = base_n, mapping = aes(x = t_db_hi, y = log(cort1_correct + 1), col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") +  
+        theme_classic() + xlab("High Temp Prior Day (C)") + ylim(0.35, 5) + 
+        ylab(expression(paste("log(Corticosterone ng/", mu, "l)"))) + ggtitle("Nestlings")
+      
+      g1 <- ggarrange(p1, p2, p3, ncol = 3, nrow = 1)
+      
+      ggsave(here::here("3_r_scripts/fig6b.png"), plot = g1, width = 7.8, height = 2.7, units = "in", device = "png")
+      
+      
+### Basecort Avg temp previous 3 days ----            
+      # average temperature previous 3 day
+      mbaf <- lmer(cort1_correct ~ t_3b_av + as.factor(cap_num) + lat_min + (1|band),
+                   data = base_af)
+      mbam <- lmer(cort1_correct ~ t_3b_av + lat_min + (1|band),
+                   data = base_am)
+      mbn <- lm(cort1_correct ~ t_3b_av + lat_min,
+                data = base_n)
+      
+      t_1 <- tab_model(mbaf, mbam, mbn, 
+                       dv.labels = c("Adult Female Baseline", "Adult Male Baseline", "Nestling Baseline"),
+                       pred.labels = c("Intercept", "Temperature (C)", "Capture 2", "Capture 3", "Latency (min)"),
+                       title = "Average temperature prior 3 days.")
+      saveRDS(t_1, here::here("5_other_outputs/table7.rds"))
+      
+      # make plots for these three on normal scale and on log scale
+      
+      p1 <- ggplot(data = base_af, mapping = aes(x = t_3b_av, y = cort1_correct, col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") + ylim(0, 50) + 
+        theme_classic() + xlab("Avg Temp Prior 3 Days (C)") + 
+        ylab(expression(paste("Corticosterone ng/", mu, "l"))) + ggtitle("Adult Females")
+      
+      p2 <- ggplot(data = base_am, mapping = aes(x = t_3b_av, y = cort1_correct, col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") +  
+        theme_classic() + xlab("Avg Temp Prior 3 Days (C)") + 
+        ylab(expression(paste("Corticosterone ng/", mu, "l"))) + ggtitle("Adult Males") + ylim(0, 50)
+      
+      p3 <- ggplot(data = base_n, mapping = aes(x = t_3b_av, y = cort1_correct, col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") +  
+        theme_classic() + xlab("Avg Temp Prior 3 Days (C)") + 
+        ylab(expression(paste("Corticosterone ng/", mu, "l"))) + ggtitle("Nestlings") + ylim(0, 100)
+      
+      g1 <- ggarrange(p1, p2, p3, ncol = 3, nrow = 1)
+      
+      ggsave(here::here("3_r_scripts/fig7.png"), plot = g1, width = 7.8, height = 2.7, units = "in", device = "png")
+      
+      # log cort night before average
+      mbaf <- lmer(log(cort1_correct + 1) ~ t_db_av + as.factor(cap_num) + lat_min + (1|band),
+                   data = base_af)
+      mbam <- lmer(log(cort1_correct + 1) ~ t_db_av + lat_min + (1|band),
+                   data = base_am)
+      mbn <- lm(log(cort1_correct + 1) ~ t_db_av + lat_min,
+                data = base_n)
+      
+      t_1 <- tab_model(mbaf, mbam, mbn, 
+                       dv.labels = c("Adult Female Baseline", "Adult Male Baseline", "Nestling Baseline"),
+                       pred.labels = c("Intercept", "Temperature (C)", "Capture 2", "Capture 3", "Latency (min)"),
+                       title = "Average temperature prior day.")
+      saveRDS(t_1, here::here("5_other_outputs/table8.rds"))
+      
+      # make plots for these three on normal scale and on log scale
+      
+      p1 <- ggplot(data = base_af, mapping = aes(x = t_db_av, y = log(cort1_correct + 1), col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") + 
+        theme_classic() + xlab("Avg Temp Prior 3 Days (C)") + ylim(0.35, 5) +
+        ylab(expression(paste("log(Corticosterone ng/", mu, "l)"))) + ggtitle("Adult Females")
+      
+      p2 <- ggplot(data = base_am, mapping = aes(x = t_db_av, y = log(cort1_correct + 1), col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") +  
+        theme_classic() + xlab("Avg Temp Prior 3 Days (C)") + ylim(0.35, 5) +
+        ylab(expression(paste("log(Corticosterone ng/", mu, "l)"))) + ggtitle("Adult Males")
+      
+      p3 <- ggplot(data = base_n, mapping = aes(x = t_db_av, y = log(cort1_correct + 1), col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") +  
+        theme_classic() + xlab("Avg Temp Prior 3 Days (C)") + ylim(0.35, 5) + 
+        ylab(expression(paste("log(Corticosterone ng/", mu, "l)"))) + ggtitle("Nestlings")
+      
+      g1 <- ggarrange(p1, p2, p3, ncol = 3, nrow = 1)
+      
+      ggsave(here::here("3_r_scripts/fig8.png"), plot = g1, width = 7.8, height = 2.7, units = "in", device = "png")
+      
+      
+      
+# Stress cort ----            
+  ## make datasets
+      stress_af <- subset(base_af, base_af$type2 == "S")
+      stress_am <- subset(base_am, base_am$type2 == "S")
+      stress_n <- subset(base_n, base_n$type2 == "S")
+### Stress cort 3 hours prior or morning of ----
+      # morning of baseline
+      mbaf <- lmer(cort2_correct ~ t_m_av + as.factor(cap_num) + lat_min + (1|band),
+                   data = stress_af)
+      mbam <- lmer(cort2_correct ~ t_3cap_av + lat_min + (1|band),
+                   data = stress_am)
+      mbn <- lmer(cort2_correct ~ t_3cap_av + lat_min + (1|year),
+                data = stress_n)
+      
+      t_1 <- tab_model(mbaf, mbam, mbn, 
+                       dv.labels = c("Adult Female Stress Induced", "Adult Male Stress Induced", "Nestling Stress Induced"),
+                       pred.labels = c("Intercept", "Temperature 6-8am (C)", "Capture 2", "Capture 3", "Latency (min)", "Temperature 3 hrs prior (C)"),
+                       title = "Average temperature 3 hours before capture.")
+      saveRDS(t_1, here::here("5_other_outputs/table1s.rds"))
+      
+      # make plots for these three on normal scale and on log scale
+      
+      p1 <- ggplot(data = stress_af, mapping = aes(x = t_m_av, y = cort2_correct, col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") + 
+        theme_classic() + xlab("Avg Temp 6-8 a.m. (C)") + ylim(0, 100) +
+        ylab(expression(paste("Corticosterone ng/", mu, "l"))) + ggtitle("Adult Females")
+      
+      p2 <- ggplot(data = stress_am, mapping = aes(x = t_3cap_av, y = cort2_correct, col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") +  
+        theme_classic() + xlab("Avg Temp 3 Hours Prior (C)") + ylim(0, 100) +
+        ylab(expression(paste("Corticosterone ng/", mu, "l"))) + ggtitle("Adult Males")
+      
+      p3 <- ggplot(data = stress_n, mapping = aes(x = t_3cap_av, y = cort2_correct, col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") +  
+        theme_classic() + xlab("Avg Temp 3 Hours Prior (C)") + ylim(0, 100) +
+        ylab(expression(paste("Corticosterone ng/", mu, "l"))) + ggtitle("Nestlings")
+      
+      g1 <- ggarrange(p1, p2, p3, ncol = 3, nrow = 1)
+      
+      ggsave(here::here("3_r_scripts/fig1s.png"), plot = g1, width = 7.8, height = 2.7, units = "in", device = "png")
+      
+      # morning of baseline
+      mbaf <- lmer(log(cort2_correct + 1) ~ t_m_av + as.factor(cap_num) + lat_min + (1|band),
+                   data = stress_af)
+      mbam <- lm(log(cort2_correct + 1) ~ t_3cap_av + lat_min,
+                   data = stress_am)
+      mbn <- lm(log(cort2_correct + 1) ~ t_3cap_av + lat_min,
+                data = stress_n)
+      
+      t_1 <- tab_model(mbaf, mbam, mbn, 
+                       dv.labels = c("Adult Female Stress Induced", "Adult Male Stress Induced", "Nestling Stress Induced"),
+                       pred.labels = c("Intercept", "Temperature 6-8am (C)", "Capture 2", "Capture 3", "Latency (min)", "Temperature 3 hrs prior (C)"),
+                       title = "Average temperature 3 hours before capture.")
+      saveRDS(t_1, here::here("5_other_outputs/table2s.rds"))
+      
+      # make plots for these three on normal scale and on log scale
+      
+      p1 <- ggplot(data = stress_af, mapping = aes(x = t_m_av, y = log(cort2_correct + 1), col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") + 
+        theme_classic() + xlab("Avg Temp 6-8 a.m. (C)") + ylim(0.35, 5) +
+        ylab(expression(paste("log(Corticosterone ng/", mu, "l)"))) + ggtitle("Adult Females")
+      
+      p2 <- ggplot(data = stress_am, mapping = aes(x = t_3cap_av, y = log(cort2_correct + 1), col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") +  
+        theme_classic() + xlab("Avg Temp 3 Hours Prior (C)") + ylim(0.35, 5) +
+        ylab(expression(paste("log(Corticosterone ng/", mu, "l)"))) + ggtitle("Adult Males")
+      
+      p3 <- ggplot(data = stress_n, mapping = aes(x = t_3cap_av, y = log(cort2_correct + 1), col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") +  
+        theme_classic() + xlab("Avg Temp 3 Hours Prior (C)") + ylim(0.35, 5) + 
+        ylab(expression(paste("log(Corticosterone ng/", mu, "l)"))) + ggtitle("Nestlings")
+      
+      g1 <- ggarrange(p1, p2, p3, ncol = 3, nrow = 1)
+      
+      ggsave(here::here("3_r_scripts/fig2s.png"), plot = g1, width = 7.8, height = 2.7, units = "in", device = "png")
+      
+### Stress cort avg temperature from previous night ----
+      
+      # night before average temperature
+      mbaf <- lmer(cort2_correct ~ t_nb_av + as.factor(cap_num) + lat_min + (1|band),
+                   data = stress_af)
+      mbam <- lmer(cort2_correct ~ t_nb_av + lat_min + (1|band),
+                   data = stress_am)
+      mbn <- lm(cort2_correct ~ t_nb_av + lat_min,
+                data = stress_n)
+      
+      t_1 <- tab_model(mbaf, mbam, mbn, 
+                       dv.labels = c("Adult Female Stress Induced", "Adult Male Stress Induced", "Nestling Stress Induced"),
+                       pred.labels = c("Intercept", "Temperature (C)", "Capture 2", "Capture 3", "Latency (min)"),
+                       title = "Low temperature previous night.")
+      saveRDS(t_1, here::here("5_other_outputs/table3s.rds"))
+      
+      # make plots for these three on normal scale and on log scale
+      
+      p1 <- ggplot(data = stress_af, mapping = aes(x = t_nb_av, y = cort2_correct, col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") + ylim(0, 100) + 
+        theme_classic() + xlab("Avg Temp Last Night (C)") + 
+        ylab(expression(paste("Corticosterone ng/", mu, "l"))) + ggtitle("Adult Females")
+      
+      p2 <- ggplot(data = stress_am, mapping = aes(x = t_nb_av, y = cort2_correct, col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") +  
+        theme_classic() + xlab("Avg Temp Last Night (C)") + 
+        ylab(expression(paste("Corticosterone ng/", mu, "l"))) + ggtitle("Adult Males") + ylim(0, 100)
+      
+      p3 <- ggplot(data = stress_n, mapping = aes(x = t_nb_av, y = cort2_correct, col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") +  
+        theme_classic() + xlab("Avg Temp Last Night (C)") + 
+        ylab(expression(paste("Corticosterone ng/", mu, "l"))) + ggtitle("Nestlings")
+      
+      g1 <- ggarrange(p1, p2, p3, ncol = 3, nrow = 1)
+      
+      ggsave(here::here("3_r_scripts/fig3s.png"), plot = g1, width = 7.8, height = 2.7, units = "in", device = "png")
+      
+      # log cort night before average
+      mbaf <- lmer(log(cort2_correct + 1) ~ t_nb_av + as.factor(cap_num) + lat_min + (1|band),
+                   data = stress_af)
+      mbam <- lmer(log(cort2_correct + 1) ~ t_nb_av + lat_min + (1|band),
+                   data = stress_am)
+      mbn <- lm(log(cort2_correct + 1) ~ t_nb_av + lat_min,
+                data = stress_n)
+      
+      t_1 <- tab_model(mbaf, mbam, mbn, 
+                       dv.labels = c("Adult Female Stress Induced", "Adult Male Stress Induced", "Nestling Stress Induced"),
+                       pred.labels = c("Intercept", "Temperature (C)", "Capture 2", "Capture 3", "Latency (min)"),
+                       title = "Average temperature 3 hours before capture.")
+      saveRDS(t_1, here::here("5_other_outputs/table4s.rds"))
+      
+      # make plots for these three on normal scale and on log scale
+      
+      p1 <- ggplot(data = stress_af, mapping = aes(x = t_nb_av, y = log(cort2_correct + 1), col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") + 
+        theme_classic() + xlab("Avg Temp Last Night (C)") + ylim(0.35, 5) +
+        ylab(expression(paste("log(Corticosterone ng/", mu, "l)"))) + ggtitle("Adult Females")
+      
+      p2 <- ggplot(data = stress_am, mapping = aes(x = t_nb_av, y = log(cort2_correct + 1), col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") +  
+        theme_classic() + xlab("Avg Temp Last Night (C)") + ylim(0.35, 5) +
+        ylab(expression(paste("log(Corticosterone ng/", mu, "l)"))) + ggtitle("Adult Males")
+      
+      p3 <- ggplot(data = stress_n, mapping = aes(x = t_nb_av, y = log(cort2_correct + 1), col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") +  
+        theme_classic() + xlab("Avg Temp Last Night (C)") + ylim(0.35, 5) + 
+        ylab(expression(paste("log(Corticosterone ng/", mu, "l)"))) + ggtitle("Nestlings")
+      
+      g1 <- ggarrange(p1, p2, p3, ncol = 3, nrow = 1)
+      
+      ggsave(here::here("3_r_scripts/fig4s.png"), plot = g1, width = 7.8, height = 2.7, units = "in", device = "png")
+      
+      
+      
+### Stress vs average previous day ----           
+      # average temperature previous day
+      mbaf <- lmer(cort2_correct ~ t_db_av + as.factor(cap_num) + lat_min + (1|band),
+                   data = stress_af)
+      mbam <- lmer(cort2_correct ~ t_db_av + lat_min + (1|band),
+                   data = stress_am)
+      mbn <- lm(cort2_correct ~ t_db_av + lat_min,
+                data = stress_n)
+      
+      t_1 <- tab_model(mbaf, mbam, mbn, 
+                       dv.labels = c("Adult Female Stress Induced", "Adult Male Stress Induced", "Nestling Stress Induced"),
+                       pred.labels = c("Intercept", "Temperature (C)", "Capture 2", "Capture 3", "Latency (min)"),
+                       title = "Average temperature prior day.")
+      saveRDS(t_1, here::here("5_other_outputs/table5s.rds"))
+      
+      # make plots for these three on normal scale and on log scale
+      
+      p1 <- ggplot(data = stress_af, mapping = aes(x = t_db_av, y = cort2_correct, col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") + ylim(0, 100) + 
+        theme_classic() + xlab("Avg Temp Prior Day (C)") + 
+        ylab(expression(paste("Corticosterone ng/", mu, "l"))) + ggtitle("Adult Females")
+      
+      p2 <- ggplot(data = stress_am, mapping = aes(x = t_db_av, y = cort2_correct, col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") +  
+        theme_classic() + xlab("Avg Temp Prior Day (C)") + 
+        ylab(expression(paste("Corticosterone ng/", mu, "l"))) + ggtitle("Adult Males") + ylim(0, 100)
+      
+      p3 <- ggplot(data = stress_n, mapping = aes(x = t_db_av, y = cort2_correct, col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") +  
+        theme_classic() + xlab("Avg Temp Prior Day (C)") + 
+        ylab(expression(paste("Corticosterone ng/", mu, "l"))) + ggtitle("Nestlings") + ylim(0, 100)
+      
+      g1 <- ggarrange(p1, p2, p3, ncol = 3, nrow = 1)
+      
+      ggsave(here::here("3_r_scripts/fig5s.png"), plot = g1, width = 7.8, height = 2.7, units = "in", device = "png")
+      
+      # log cort night before average
+      mbaf <- lmer(log(cort2_correct + 1) ~ t_db_av + as.factor(cap_num) + lat_min + (1|band),
+                   data = stress_af)
+      mbam <- lmer(log(cort2_correct + 1) ~ t_db_av + lat_min + (1|band),
+                   data = stress_am)
+      mbn <- lm(log(cort2_correct + 1) ~ t_db_av + lat_min,
+                data = stress_n)
+      
+      t_1 <- tab_model(mbaf, mbam, mbn, 
+                       dv.labels = c("Adult Female Stress Induced", "Adult Male Stress Induced", "Nestling Stress Induced"),
+                       pred.labels = c("Intercept", "Temperature (C)", "Capture 2", "Capture 3", "Latency (min)"),
+                       title = "Average temperature prior day.")
+      saveRDS(t_1, here::here("5_other_outputs/table6s.rds"))
+      
+      # make plots for these three on normal scale and on log scale
+      
+      p1 <- ggplot(data = stress_af, mapping = aes(x = t_db_av, y = log(cort2_correct + 1), col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") + 
+        theme_classic() + xlab("Avg Temp Prior Day (C)") + ylim(0.35, 5) +
+        ylab(expression(paste("log(Corticosterone ng/", mu, "l)"))) + ggtitle("Adult Females")
+      
+      p2 <- ggplot(data = stress_am, mapping = aes(x = t_db_av, y = log(cort2_correct + 1), col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") +  
+        theme_classic() + xlab("Avg Temp Prior Day (C)") + ylim(0.35, 5) +
+        ylab(expression(paste("log(Corticosterone ng/", mu, "l)"))) + ggtitle("Adult Males")
+      
+      p3 <- ggplot(data = stress_n, mapping = aes(x = t_db_av, y = log(cort2_correct + 1), col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") +  
+        theme_classic() + xlab("Avg Temp Prior Day (C)") + ylim(0.35, 5) + 
+        ylab(expression(paste("log(Corticosterone ng/", mu, "l)"))) + ggtitle("Nestlings")
+      
+      g1 <- ggarrange(p1, p2, p3, ncol = 3, nrow = 1)
+      
+      ggsave(here::here("3_r_scripts/fig6s.png"), plot = g1, width = 7.8, height = 2.7, units = "in", device = "png")
+      
+      
+### Stress vs high previous day ----           
+      # average temperature previous day
+      mbaf <- lmer(cort2_correct ~ t_db_hi + as.factor(cap_num) + lat_min + (1|band),
+                   data = stress_af)
+      mbam <- lmer(cort2_correct ~ t_db_hi + lat_min + (1|band),
+                   data = stress_am)
+      mbn <- lm(cort2_correct ~ t_db_hi + lat_min,
+                data = stress_n)
+      
+      t_1 <- tab_model(mbaf, mbam, mbn, 
+                       dv.labels = c("Adult Female Stress Induced", "Adult Male Stress Induced", "Nestling Stress Induced"),
+                       pred.labels = c("Intercept", "Temperature (C)", "Capture 2", "Capture 3", "Latency (min)"),
+                       title = "High temperature prior day.")
+      saveRDS(t_1, here::here("5_other_outputs/table5bs.rds"))
+      
+      # make plots for these three on normal scale and on log scale
+      
+      p1 <- ggplot(data = stress_af, mapping = aes(x = t_db_hi, y = cort2_correct, col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") + ylim(0, 100) + 
+        theme_classic() + xlab("High Temp Prior Day (C)") + 
+        ylab(expression(paste("Corticosterone ng/", mu, "l"))) + ggtitle("Adult Females")
+      
+      p2 <- ggplot(data = stress_am, mapping = aes(x = t_db_hi, y = cort2_correct, col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") +  
+        theme_classic() + xlab("High Temp Prior Day (C)") + 
+        ylab(expression(paste("Corticosterone ng/", mu, "l"))) + ggtitle("Adult Males") + ylim(0, 100)
+      
+      p3 <- ggplot(data = stress_n, mapping = aes(x = t_db_hi, y = cort2_correct, col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") +  
+        theme_classic() + xlab("High Temp Prior Day (C)") + 
+        ylab(expression(paste("Corticosterone ng/", mu, "l"))) + ggtitle("Nestlings") + ylim(0, 100)
+      
+      g1 <- ggarrange(p1, p2, p3, ncol = 3, nrow = 1)
+      
+      ggsave(here::here("3_r_scripts/fig5bs.png"), plot = g1, width = 7.8, height = 2.7, units = "in", device = "png")
+      
+      # log cort night before average
+      mbaf <- lmer(log(cort2_correct + 1) ~ t_db_hi + as.factor(cap_num) + lat_min + (1|band),
+                   data = stress_af)
+      mbam <- lmer(log(cort2_correct + 1) ~ t_db_hi + lat_min + (1|band),
+                   data = stress_am)
+      mbn <- lm(log(cort2_correct + 1) ~ t_db_hi + lat_min,
+                data = stress_n)
+      
+      t_1 <- tab_model(mbaf, mbam, mbn, 
+                       dv.labels = c("Adult Female Stress Induced", "Adult Male Stress Induced", "Nestling Stress Induced"),
+                       pred.labels = c("Intercept", "Temperature (C)", "Capture 2", "Capture 3", "Latency (min)"),
+                       title = "High temperature prior day.")
+      saveRDS(t_1, here::here("5_other_outputs/table6bs.rds"))
+      
+      # make plots for these three on normal scale and on log scale
+      
+      p1 <- ggplot(data = stress_af, mapping = aes(x = t_db_hi, y = log(cort2_correct + 1), col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") + 
+        theme_classic() + xlab("High Temp Prior Day (C)") + ylim(0.35, 5) +
+        ylab(expression(paste("log(Corticosterone ng/", mu, "l)"))) + ggtitle("Adult Females")
+      
+      p2 <- ggplot(data = stress_am, mapping = aes(x = t_db_hi, y = log(cort2_correct + 1), col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") +  
+        theme_classic() + xlab("High Temp Prior Day (C)") + ylim(0.35, 5) +
+        ylab(expression(paste("log(Corticosterone ng/", mu, "l)"))) + ggtitle("Adult Males")
+      
+      p3 <- ggplot(data = stress_n, mapping = aes(x = t_db_hi, y = log(cort2_correct + 1), col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") +  
+        theme_classic() + xlab("High Temp Prior Day (C)") + ylim(0.35, 5) + 
+        ylab(expression(paste("log(Corticosterone ng/", mu, "l)"))) + ggtitle("Nestlings")
+      
+      g1 <- ggarrange(p1, p2, p3, ncol = 3, nrow = 1)
+      
+      ggsave(here::here("3_r_scripts/fig6bs.png"), plot = g1, width = 7.8, height = 2.7, units = "in", device = "png")
+      
+      
+### Stress Avg temp previous 3 days ----            
+      # average temperature previous 3 day
+      mbaf <- lmer(cort2_correct ~ t_3b_av + as.factor(cap_num) + lat_min + (1|band),
+                   data = stress_af)
+      mbam <- lmer(cort2_correct ~ t_3b_av + lat_min + (1|band),
+                   data = stress_am)
+      mbn <- lm(cort2_correct ~ t_3b_av + lat_min,
+                data = stress_n)
+      
+      t_1 <- tab_model(mbaf, mbam, mbn, 
+                       dv.labels = c("Adult Female Stress Induced", "Adult Male Stress Induced", "Nestling Stress Induced"),
+                       pred.labels = c("Intercept", "Temperature (C)", "Capture 2", "Capture 3", "Latency (min)"),
+                       title = "Average temperature prior 3 days.")
+      saveRDS(t_1, here::here("5_other_outputs/table7s.rds"))
+      
+      # make plots for these three on normal scale and on log scale
+      
+      p1 <- ggplot(data = stress_af, mapping = aes(x = t_3b_av, y = cort2_correct, col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") + ylim(0, 100) + 
+        theme_classic() + xlab("Avg Temp Prior 3 Days (C)") + 
+        ylab(expression(paste("Corticosterone ng/", mu, "l"))) + ggtitle("Adult Females")
+      
+      p2 <- ggplot(data = stress_am, mapping = aes(x = t_3b_av, y = cort2_correct, col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") +  
+        theme_classic() + xlab("Avg Temp Prior 3 Days (C)") + 
+        ylab(expression(paste("Corticosterone ng/", mu, "l"))) + ggtitle("Adult Males") + ylim(0, 100)
+      
+      p3 <- ggplot(data = stress_n, mapping = aes(x = t_3b_av, y = cort2_correct, col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") +  
+        theme_classic() + xlab("Avg Temp Prior 3 Days (C)") + 
+        ylab(expression(paste("Corticosterone ng/", mu, "l"))) + ggtitle("Nestlings") + ylim(0, 100)
+      
+      g1 <- ggarrange(p1, p2, p3, ncol = 3, nrow = 1)
+      
+      ggsave(here::here("3_r_scripts/fig7s.png"), plot = g1, width = 7.8, height = 2.7, units = "in", device = "png")
+      
+      # log cort night before average
+      mbaf <- lmer(log(cort2_correct + 1) ~ t_db_av + as.factor(cap_num) + lat_min + (1|band),
+                   data = stress_af)
+      mbam <- lmer(log(cort2_correct + 1) ~ t_db_av + lat_min + (1|band),
+                   data = stress_am)
+      mbn <- lm(log(cort2_correct + 1) ~ t_db_av + lat_min,
+                data = stress_n)
+      
+      t_1 <- tab_model(mbaf, mbam, mbn, 
+                       dv.labels = c("Adult Female Stress Induced", "Adult Male Stress Induced", "Nestling Stress Induced"),
+                       pred.labels = c("Intercept", "Temperature (C)", "Capture 2", "Capture 3", "Latency (min)"),
+                       title = "Average temperature prior day.")
+      saveRDS(t_1, here::here("5_other_outputs/table8s.rds"))
+      
+      # make plots for these three on normal scale and on log scale
+      
+      p1 <- ggplot(data = stress_af, mapping = aes(x = t_db_av, y = log(cort2_correct + 1), col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") + 
+        theme_classic() + xlab("Avg Temp Prior 3 Days (C)") + ylim(0.35, 5) +
+        ylab(expression(paste("log(Corticosterone ng/", mu, "l)"))) + ggtitle("Adult Females")
+      
+      p2 <- ggplot(data = stress_am, mapping = aes(x = t_db_av, y = log(cort2_correct + 1), col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") +  
+        theme_classic() + xlab("Avg Temp Prior 3 Days (C)") + ylim(0.35, 5) +
+        ylab(expression(paste("log(Corticosterone ng/", mu, "l)"))) + ggtitle("Adult Males")
+      
+      p3 <- ggplot(data = stress_n, mapping = aes(x = t_db_av, y = log(cort2_correct + 1), col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") +  
+        theme_classic() + xlab("Avg Temp Prior 3 Days (C)") + ylim(0.35, 5) + 
+        ylab(expression(paste("log(Corticosterone ng/", mu, "l)"))) + ggtitle("Nestlings")
+      
+      g1 <- ggarrange(p1, p2, p3, ncol = 3, nrow = 1)
+      
+      ggsave(here::here("3_r_scripts/fig8s.png"), plot = g1, width = 7.8, height = 2.7, units = "in", device = "png")
+      
+      
+      
+      
+# Post dex cort ----
+    ## make datasets
+      stress_af <- subset(base_af, base_af$type3 == "D")
+      stress_am <- subset(base_am, base_am$type3 == "D")
+      stress_n <- subset(base_n, base_n$type3 == "D")
+   
+### Dex cort 3 hours prior or morning of ----
+      # morning of baseline
+      mbaf <- lmer(cort3_correct ~ t_m_av + as.factor(cap_num) + lat_min + (1|band),
+                   data = stress_af)
+      mbam <- lmer(cort3_correct ~ t_3cap_av + lat_min + (1|band),
+                   data = stress_am)
+      mbn <- lmer(cort3_correct ~ t_3cap_av + lat_min + (1|year),
+                  data = stress_n)
+      
+      t_1 <- tab_model(mbaf, mbam, mbn, 
+                       dv.labels = c("Adult Female Post-Dex", "Adult Male Post-Dex", "Nestling Post-Dex"),
+                       pred.labels = c("Intercept", "Temperature 6-8am (C)", "Capture 2", "Capture 3", "Latency (min)", "Temperature 3 hrs prior (C)"),
+                       title = "Average temperature 3 hours before capture.")
+      saveRDS(t_1, here::here("5_other_outputs/table1d.rds"))
+      
+      # make plots for these three on normal scale and on log scale
+      
+      p1 <- ggplot(data = stress_af, mapping = aes(x = t_m_av, y = cort3_correct, col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") + 
+        theme_classic() + xlab("Avg Temp 6-8 a.m. (C)") + ylim(0, 50) +
+        ylab(expression(paste("Corticosterone ng/", mu, "l"))) + ggtitle("Adult Females")
+      
+      p2 <- ggplot(data = stress_am, mapping = aes(x = t_3cap_av, y = cort3_correct, col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") +  
+        theme_classic() + xlab("Avg Temp 3 Hours Prior (C)") + ylim(0, 50) +
+        ylab(expression(paste("Corticosterone ng/", mu, "l"))) + ggtitle("Adult Males")
+      
+      p3 <- ggplot(data = stress_n, mapping = aes(x = t_3cap_av, y = cort3_correct, col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") +  
+        theme_classic() + xlab("Avg Temp 3 Hours Prior (C)") + ylim(0, 50) +
+        ylab(expression(paste("Corticosterone ng/", mu, "l"))) + ggtitle("Nestlings")
+      
+      g1 <- ggarrange(p1, p2, p3, ncol = 3, nrow = 1)
+      
+      ggsave(here::here("3_r_scripts/fig1d.png"), plot = g1, width = 7.8, height = 2.7, units = "in", device = "png")
+      
+      # morning of baseline
+      mbaf <- lmer(log(cort3_correct + 1) ~ t_m_av + as.factor(cap_num) + lat_min + (1|band),
+                   data = stress_af)
+      mbam <- lm(log(cort3_correct + 1) ~ t_3cap_av + lat_min,
+                 data = stress_am)
+      mbn <- lm(log(cort3_correct + 1) ~ t_3cap_av + lat_min,
+                data = stress_n)
+      
+      t_1 <- tab_model(mbaf, mbam, mbn, 
+                       dv.labels = c("Adult Female Post-Dex", "Adult Male Post-Dex", "Nestling Post-Dex"),
+                       pred.labels = c("Intercept", "Temperature 6-8am (C)", "Capture 2", "Capture 3", "Latency (min)", "Temperature 3 hrs prior (C)"),
+                       title = "Average temperature 3 hours before capture.")
+      saveRDS(t_1, here::here("5_other_outputs/table2d.rds"))
+      
+      # make plots for these three on normal scale and on log scale
+      
+      p1 <- ggplot(data = stress_af, mapping = aes(x = t_m_av, y = log(cort3_correct + 1), col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") + 
+        theme_classic() + xlab("Avg Temp 6-8 a.m. (C)") + ylim(0.35, 5) +
+        ylab(expression(paste("log(Corticosterone ng/", mu, "l)"))) + ggtitle("Adult Females")
+      
+      p2 <- ggplot(data = stress_am, mapping = aes(x = t_3cap_av, y = log(cort3_correct + 1), col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") +  
+        theme_classic() + xlab("Avg Temp 3 Hours Prior (C)") + ylim(0.35, 5) +
+        ylab(expression(paste("log(Corticosterone ng/", mu, "l)"))) + ggtitle("Adult Males")
+      
+      p3 <- ggplot(data = stress_n, mapping = aes(x = t_3cap_av, y = log(cort3_correct + 1), col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") +  
+        theme_classic() + xlab("Avg Temp 3 Hours Prior (C)") + ylim(0.35, 5) + 
+        ylab(expression(paste("log(Corticosterone ng/", mu, "l)"))) + ggtitle("Nestlings")
+      
+      g1 <- ggarrange(p1, p2, p3, ncol = 3, nrow = 1)
+      
+      ggsave(here::here("3_r_scripts/fig2d.png"), plot = g1, width = 7.8, height = 2.7, units = "in", device = "png")
+      
+### Dex cort avg temperature from previous night ----
+      
+      # night before average temperature
+      mbaf <- lmer(cort3_correct ~ t_nb_av + as.factor(cap_num) + lat_min + (1|band),
+                   data = stress_af)
+      mbam <- lmer(cort3_correct ~ t_nb_av + lat_min + (1|band),
+                   data = stress_am)
+      mbn <- lm(cort3_correct ~ t_nb_av + lat_min,
+                data = stress_n)
+      
+      t_1 <- tab_model(mbaf, mbam, mbn, 
+                       dv.labels = c("Adult Female Post-Dex", "Adult Male Post-Dex", "Nestling Post-Dex"),
+                       pred.labels = c("Intercept", "Temperature (C)", "Capture 2", "Capture 3", "Latency (min)"),
+                       title = "Low temperature previous night.")
+      saveRDS(t_1, here::here("5_other_outputs/table3d.rds"))
+      
+      # make plots for these three on normal scale and on log scale
+      
+      p1 <- ggplot(data = stress_af, mapping = aes(x = t_nb_av, y = cort3_correct, col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") + ylim(0, 50) + 
+        theme_classic() + xlab("Avg Temp Last Night (C)") + 
+        ylab(expression(paste("Corticosterone ng/", mu, "l"))) + ggtitle("Adult Females")
+      
+      p2 <- ggplot(data = stress_am, mapping = aes(x = t_nb_av, y = cort3_correct, col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") +  
+        theme_classic() + xlab("Avg Temp Last Night (C)") + 
+        ylab(expression(paste("Corticosterone ng/", mu, "l"))) + ggtitle("Adult Males") + ylim(0, 50)
+      
+      p3 <- ggplot(data = stress_n, mapping = aes(x = t_nb_av, y = cort3_correct, col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") +  
+        theme_classic() + xlab("Avg Temp Last Night (C)") + ylim(0, 50) +
+        ylab(expression(paste("Corticosterone ng/", mu, "l"))) + ggtitle("Nestlings")
+      
+      g1 <- ggarrange(p1, p2, p3, ncol = 3, nrow = 1)
+      
+      ggsave(here::here("3_r_scripts/fig3d.png"), plot = g1, width = 7.8, height = 2.7, units = "in", device = "png")
+      
+      # log cort night before average
+      mbaf <- lmer(log(cort3_correct + 1) ~ t_nb_av + as.factor(cap_num) + lat_min + (1|band),
+                   data = stress_af)
+      mbam <- lmer(log(cort3_correct + 1) ~ t_nb_av + lat_min + (1|band),
+                   data = stress_am)
+      mbn <- lm(log(cort3_correct + 1) ~ t_nb_av + lat_min,
+                data = stress_n)
+      
+      t_1 <- tab_model(mbaf, mbam, mbn, 
+                       dv.labels = c("Adult Female Post-Dex", "Adult Male Post-Dex", "Nestling Post-Dex"),
+                       pred.labels = c("Intercept", "Temperature (C)", "Capture 2", "Capture 3", "Latency (min)"),
+                       title = "Average temperature 3 hours before capture.")
+      saveRDS(t_1, here::here("5_other_outputs/table4d.rds"))
+      
+      # make plots for these three on normal scale and on log scale
+      
+      p1 <- ggplot(data = stress_af, mapping = aes(x = t_nb_av, y = log(cort3_correct + 1), col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") + 
+        theme_classic() + xlab("Avg Temp Last Night (C)") + ylim(0.35, 5) +
+        ylab(expression(paste("log(Corticosterone ng/", mu, "l)"))) + ggtitle("Adult Females")
+      
+      p2 <- ggplot(data = stress_am, mapping = aes(x = t_nb_av, y = log(cort3_correct + 1), col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") +  
+        theme_classic() + xlab("Avg Temp Last Night (C)") + ylim(0.35, 5) +
+        ylab(expression(paste("log(Corticosterone ng/", mu, "l)"))) + ggtitle("Adult Males")
+      
+      p3 <- ggplot(data = stress_n, mapping = aes(x = t_nb_av, y = log(cort3_correct + 1), col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") +  
+        theme_classic() + xlab("Avg Temp Last Night (C)") + ylim(0.35, 5) + 
+        ylab(expression(paste("log(Corticosterone ng/", mu, "l)"))) + ggtitle("Nestlings")
+      
+      g1 <- ggarrange(p1, p2, p3, ncol = 3, nrow = 1)
+      
+      ggsave(here::here("3_r_scripts/fig4d.png"), plot = g1, width = 7.8, height = 2.7, units = "in", device = "png")
+      
+      
+      
+### Dex vs average previous day ----           
+      # average temperature previous day
+      mbaf <- lmer(cort3_correct ~ t_db_av + as.factor(cap_num) + lat_min + (1|band),
+                   data = stress_af)
+      mbam <- lmer(cort3_correct ~ t_db_av + lat_min + (1|band),
+                   data = stress_am)
+      mbn <- lm(cort3_correct ~ t_db_av + lat_min,
+                data = stress_n)
+      
+      t_1 <- tab_model(mbaf, mbam, mbn, 
+                       dv.labels = c("Adult Female Post-Dex", "Adult Male Post-Dex", "Nestling Post-Dex"),
+                       pred.labels = c("Intercept", "Temperature (C)", "Capture 2", "Capture 3", "Latency (min)"),
+                       title = "Average temperature prior day.")
+      saveRDS(t_1, here::here("5_other_outputs/table5d.rds"))
+      
+      # make plots for these three on normal scale and on log scale
+      
+      p1 <- ggplot(data = stress_af, mapping = aes(x = t_db_av, y = cort3_correct, col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") + ylim(0, 50) + 
+        theme_classic() + xlab("Avg Temp Prior Day (C)") + 
+        ylab(expression(paste("Corticosterone ng/", mu, "l"))) + ggtitle("Adult Females")
+      
+      p2 <- ggplot(data = stress_am, mapping = aes(x = t_db_av, y = cort3_correct, col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") +  
+        theme_classic() + xlab("Avg Temp Prior Day (C)") + 
+        ylab(expression(paste("Corticosterone ng/", mu, "l"))) + ggtitle("Adult Males") + ylim(0, 50)
+      
+      p3 <- ggplot(data = stress_n, mapping = aes(x = t_db_av, y = cort3_correct, col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") +  
+        theme_classic() + xlab("Avg Temp Prior Day (C)") + 
+        ylab(expression(paste("Corticosterone ng/", mu, "l"))) + ggtitle("Nestlings") + ylim(0, 50)
+      
+      g1 <- ggarrange(p1, p2, p3, ncol = 3, nrow = 1)
+      
+      ggsave(here::here("3_r_scripts/fig5d.png"), plot = g1, width = 7.8, height = 2.7, units = "in", device = "png")
+      
+      # log cort night before average
+      mbaf <- lmer(log(cort3_correct + 1) ~ t_db_av + as.factor(cap_num) + lat_min + (1|band),
+                   data = stress_af)
+      mbam <- lmer(log(cort3_correct + 1) ~ t_db_av + lat_min + (1|band),
+                   data = stress_am)
+      mbn <- lm(log(cort3_correct + 1) ~ t_db_av + lat_min,
+                data = stress_n)
+      
+      t_1 <- tab_model(mbaf, mbam, mbn, 
+                       dv.labels = c("Adult Female Post-Dex", "Adult Male Post-Dex", "Nestling Post-Dex"),
+                       pred.labels = c("Intercept", "Temperature (C)", "Capture 2", "Capture 3", "Latency (min)"),
+                       title = "Average temperature prior day.")
+      saveRDS(t_1, here::here("5_other_outputs/table6d.rds"))
+      
+      # make plots for these three on normal scale and on log scale
+      
+      p1 <- ggplot(data = stress_af, mapping = aes(x = t_db_av, y = log(cort3_correct + 1), col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") + 
+        theme_classic() + xlab("Avg Temp Prior Day (C)") + ylim(0.35, 5) +
+        ylab(expression(paste("log(Corticosterone ng/", mu, "l)"))) + ggtitle("Adult Females")
+      
+      p2 <- ggplot(data = stress_am, mapping = aes(x = t_db_av, y = log(cort3_correct + 1), col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") +  
+        theme_classic() + xlab("Avg Temp Prior Day (C)") + ylim(0.35, 5) +
+        ylab(expression(paste("log(Corticosterone ng/", mu, "l)"))) + ggtitle("Adult Males")
+      
+      p3 <- ggplot(data = stress_n, mapping = aes(x = t_db_av, y = log(cort3_correct + 1), col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") +  
+        theme_classic() + xlab("Avg Temp Prior Day (C)") + ylim(0.35, 5) + 
+        ylab(expression(paste("log(Corticosterone ng/", mu, "l)"))) + ggtitle("Nestlings")
+      
+      g1 <- ggarrange(p1, p2, p3, ncol = 3, nrow = 1)
+      
+      ggsave(here::here("3_r_scripts/fig6d.png"), plot = g1, width = 7.8, height = 2.7, units = "in", device = "png")
+      
+      
+### Dex vs high previous day ----           
+      # average temperature previous day
+      mbaf <- lmer(cort3_correct ~ t_db_hi + as.factor(cap_num) + lat_min + (1|band),
+                   data = stress_af)
+      mbam <- lmer(cort3_correct ~ t_db_hi + lat_min + (1|band),
+                   data = stress_am)
+      mbn <- lm(cort3_correct ~ t_db_hi + lat_min,
+                data = stress_n)
+      
+      t_1 <- tab_model(mbaf, mbam, mbn, 
+                       dv.labels = c("Adult Female Post-Dex", "Adult Male Post-Dex", "Nestling Post-Dex"),
+                       pred.labels = c("Intercept", "Temperature (C)", "Capture 2", "Capture 3", "Latency (min)"),
+                       title = "High temperature prior day.")
+      saveRDS(t_1, here::here("5_other_outputs/table5bd.rds"))
+      
+      # make plots for these three on normal scale and on log scale
+      
+      p1 <- ggplot(data = stress_af, mapping = aes(x = t_db_hi, y = cort3_correct, col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") + ylim(0, 50) + 
+        theme_classic() + xlab("High Temp Prior Day (C)") + 
+        ylab(expression(paste("Corticosterone ng/", mu, "l"))) + ggtitle("Adult Females")
+      
+      p2 <- ggplot(data = stress_am, mapping = aes(x = t_db_hi, y = cort3_correct, col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") +  
+        theme_classic() + xlab("High Temp Prior Day (C)") + 
+        ylab(expression(paste("Corticosterone ng/", mu, "l"))) + ggtitle("Adult Males") + ylim(0, 50)
+      
+      p3 <- ggplot(data = stress_n, mapping = aes(x = t_db_hi, y = cort3_correct, col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") +  
+        theme_classic() + xlab("High Temp Prior Day (C)") + 
+        ylab(expression(paste("Corticosterone ng/", mu, "l"))) + ggtitle("Nestlings") + ylim(0, 50)
+      
+      g1 <- ggarrange(p1, p2, p3, ncol = 3, nrow = 1)
+      
+      ggsave(here::here("3_r_scripts/fig5bd.png"), plot = g1, width = 7.8, height = 2.7, units = "in", device = "png")
+      
+      # log cort night before average
+      mbaf <- lmer(log(cort3_correct + 1) ~ t_db_hi + as.factor(cap_num) + lat_min + (1|band),
+                   data = stress_af)
+      mbam <- lmer(log(cort3_correct + 1) ~ t_db_hi + lat_min + (1|band),
+                   data = stress_am)
+      mbn <- lm(log(cort3_correct + 1) ~ t_db_hi + lat_min,
+                data = stress_n)
+      
+      t_1 <- tab_model(mbaf, mbam, mbn, 
+                       dv.labels = c("Adult Female Post-Dex", "Adult Male Post-Dex", "Nestling Post-Dex"),
+                       pred.labels = c("Intercept", "Temperature (C)", "Capture 2", "Capture 3", "Latency (min)"),
+                       title = "High temperature prior day.")
+      saveRDS(t_1, here::here("5_other_outputs/table6bd.rds"))
+      
+      # make plots for these three on normal scale and on log scale
+      
+      p1 <- ggplot(data = stress_af, mapping = aes(x = t_db_hi, y = log(cort3_correct + 1), col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") + 
+        theme_classic() + xlab("High Temp Prior Day (C)") + ylim(0.35, 5) +
+        ylab(expression(paste("log(Corticosterone ng/", mu, "l)"))) + ggtitle("Adult Females")
+      
+      p2 <- ggplot(data = stress_am, mapping = aes(x = t_db_hi, y = log(cort3_correct + 1), col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") +  
+        theme_classic() + xlab("High Temp Prior Day (C)") + ylim(0.35, 5) +
+        ylab(expression(paste("log(Corticosterone ng/", mu, "l)"))) + ggtitle("Adult Males")
+      
+      p3 <- ggplot(data = stress_n, mapping = aes(x = t_db_hi, y = log(cort3_correct + 1), col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") +  
+        theme_classic() + xlab("High Temp Prior Day (C)") + ylim(0.35, 5) + 
+        ylab(expression(paste("log(Corticosterone ng/", mu, "l)"))) + ggtitle("Nestlings")
+      
+      g1 <- ggarrange(p1, p2, p3, ncol = 3, nrow = 1)
+      
+      ggsave(here::here("3_r_scripts/fig6bd.png"), plot = g1, width = 7.8, height = 2.7, units = "in", device = "png")
+      
+      
+### Dex Avg temp previous 3 days ----            
+      # average temperature previous 3 day
+      mbaf <- lmer(cort3_correct ~ t_3b_av + as.factor(cap_num) + lat_min + (1|band),
+                   data = stress_af)
+      mbam <- lmer(cort3_correct ~ t_3b_av + lat_min + (1|band),
+                   data = stress_am)
+      mbn <- lm(cort3_correct ~ t_3b_av + lat_min,
+                data = stress_n)
+      
+      t_1 <- tab_model(mbaf, mbam, mbn, 
+                       dv.labels = c("Adult Female Post-Dex", "Adult Male Post-Dex", "Nestling Post-Dex"),
+                       pred.labels = c("Intercept", "Temperature (C)", "Capture 2", "Capture 3", "Latency (min)"),
+                       title = "Average temperature prior 3 days.")
+      saveRDS(t_1, here::here("5_other_outputs/table7d.rds"))
+      
+      # make plots for these three on normal scale and on log scale
+      
+      p1 <- ggplot(data = stress_af, mapping = aes(x = t_3b_av, y = cort3_correct, col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") + ylim(0, 50) + 
+        theme_classic() + xlab("Avg Temp Prior 3 Days (C)") + 
+        ylab(expression(paste("Corticosterone ng/", mu, "l"))) + ggtitle("Adult Females")
+      
+      p2 <- ggplot(data = stress_am, mapping = aes(x = t_3b_av, y = cort3_correct, col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") +  
+        theme_classic() + xlab("Avg Temp Prior 3 Days (C)") + 
+        ylab(expression(paste("Corticosterone ng/", mu, "l"))) + ggtitle("Adult Males") + ylim(0, 50)
+      
+      p3 <- ggplot(data = stress_n, mapping = aes(x = t_3b_av, y = cort3_correct, col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") +  
+        theme_classic() + xlab("Avg Temp Prior 3 Days (C)") + 
+        ylab(expression(paste("Corticosterone ng/", mu, "l"))) + ggtitle("Nestlings") + ylim(0, 50)
+      
+      g1 <- ggarrange(p1, p2, p3, ncol = 3, nrow = 1)
+      
+      ggsave(here::here("3_r_scripts/fig7d.png"), plot = g1, width = 7.8, height = 2.7, units = "in", device = "png")
+      
+      # log cort night before average
+      mbaf <- lmer(log(cort3_correct + 1) ~ t_db_av + as.factor(cap_num) + lat_min + (1|band),
+                   data = stress_af)
+      mbam <- lmer(log(cort3_correct + 1) ~ t_db_av + lat_min + (1|band),
+                   data = stress_am)
+      mbn <- lm(log(cort3_correct + 1) ~ t_db_av + lat_min,
+                data = stress_n)
+      
+      t_1 <- tab_model(mbaf, mbam, mbn, 
+                       dv.labels = c("Adult Female Post-Dex", "Adult Male Post-Dex", "Nestling Post-Dex"),
+                       pred.labels = c("Intercept", "Temperature (C)", "Capture 2", "Capture 3", "Latency (min)"),
+                       title = "Average temperature prior day.")
+      saveRDS(t_1, here::here("5_other_outputs/table8d.rds"))
+      
+      # make plots for these three on normal scale and on log scale
+      
+      p1 <- ggplot(data = stress_af, mapping = aes(x = t_db_av, y = log(cort3_correct + 1), col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") + 
+        theme_classic() + xlab("Avg Temp Prior 3 Days (C)") + ylim(0.35, 5) +
+        ylab(expression(paste("log(Corticosterone ng/", mu, "l)"))) + ggtitle("Adult Females")
+      
+      p2 <- ggplot(data = stress_am, mapping = aes(x = t_db_av, y = log(cort3_correct + 1), col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") +  
+        theme_classic() + xlab("Avg Temp Prior 3 Days (C)") + ylim(0.35, 5) +
+        ylab(expression(paste("log(Corticosterone ng/", mu, "l)"))) + ggtitle("Adult Males")
+      
+      p3 <- ggplot(data = stress_n, mapping = aes(x = t_db_av, y = log(cort3_correct + 1), col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") +  
+        theme_classic() + xlab("Avg Temp Prior 3 Days (C)") + ylim(0.35, 5) + 
+        ylab(expression(paste("log(Corticosterone ng/", mu, "l)"))) + ggtitle("Nestlings")
+      
+      g1 <- ggarrange(p1, p2, p3, ncol = 3, nrow = 1)
+      
+      ggsave(here::here("3_r_scripts/fig8d.png"), plot = g1, width = 7.8, height = 2.7, units = "in", device = "png")
+      
+      
+      
+      
