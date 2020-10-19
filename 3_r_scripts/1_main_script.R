@@ -1177,3 +1177,122 @@
       
       
       
+
+    ## make datasets
+      stress_af <- subset(base_af, base_af$type3 == "D" & base_af$type2 == "S")
+      stress_am <- subset(base_am, base_am$type3 == "D" & base_am$type2 == "S")
+      stress_n <- subset(base_n, base_n$type3 == "D" & base_n$type2 == "S")   
+      
+    # Neg Feedback
+      stress_af$neg_fb <- stress_af$cort3_correct - stress_af$cort2_correct
+      stress_am$neg_fb <- stress_am$cort3_correct - stress_am$cort2_correct
+      stress_n$neg_fb <- stress_n$cort3_correct - stress_n$cort2_correct
+      
+### NF cort 3 hours prior or morning of ----
+      # make plots for these three on normal scale 
+      
+      p1 <- ggplot(data = stress_af, mapping = aes(x = t_m_av, y = neg_fb, col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") + 
+        theme_classic() + xlab("Avg Temp 6-8 a.m. (C)") +
+        ylab(expression(paste("Corticosterone ng/", mu, "l"))) + ggtitle("Adult Females")
+      
+      p2 <- ggplot(data = stress_am, mapping = aes(x = t_3cap_av, y = neg_fb, col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") +  
+        theme_classic() + xlab("Avg Temp 3 Hours Prior (C)") +
+        ylab(expression(paste("Corticosterone ng/", mu, "l"))) + ggtitle("Adult Males")
+      
+      p3 <- ggplot(data = stress_n, mapping = aes(x = t_3cap_av, y = neg_fb, col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") +  
+        theme_classic() + xlab("Avg Temp 3 Hours Prior (C)") +
+        ylab(expression(paste("Corticosterone ng/", mu, "l"))) + ggtitle("Nestlings")
+      
+      g1 <- ggarrange(p1, p2, p3, ncol = 3, nrow = 1)
+      
+      ggsave(here::here("3_r_scripts/fignf1.png"), plot = g1, width = 7.8, height = 2.7, units = "in", device = "png")    
+      
+      
+### NF cort avg temperature from previous night ----
+      
+      p1 <- ggplot(data = stress_af, mapping = aes(x = t_nb_av, y = neg_fb, col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") + 
+        theme_classic() + xlab("Avg Temp Prior Night (C)") +
+        ylab(expression(paste("Corticosterone ng/", mu, "l"))) + ggtitle("Adult Females")
+      
+      p2 <- ggplot(data = stress_am, mapping = aes(x = t_nb_av, y = neg_fb, col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") +  
+        theme_classic() + xlab("Avg Temp Prior Night (C)") +
+        ylab(expression(paste("Corticosterone ng/", mu, "l"))) + ggtitle("Adult Males")
+      
+      p3 <- ggplot(data = stress_n, mapping = aes(x = t_nb_av, y = neg_fb, col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") +  
+        theme_classic() + xlab("Avg Temp Prior Night (C)") +
+        ylab(expression(paste("Corticosterone ng/", mu, "l"))) + ggtitle("Nestlings")
+      
+      g1 <- ggarrange(p1, p2, p3, ncol = 3, nrow = 1)
+      
+      ggsave(here::here("3_r_scripts/fignf2.png"), plot = g1, width = 7.8, height = 2.7, units = "in", device = "png")    
+      
+      
+### NF cort average previous day ----
+      
+      p1 <- ggplot(data = stress_af, mapping = aes(x = t_db_av, y = neg_fb, col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") + 
+        theme_classic() + xlab("Avg Temp Prior Day (C)") +
+        ylab(expression(paste("Corticosterone ng/", mu, "l"))) + ggtitle("Adult Females")
+      
+      p2 <- ggplot(data = stress_am, mapping = aes(x = t_db_av, y = neg_fb, col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") +  
+        theme_classic() + xlab("Avg Temp Prior Day (C)") +
+        ylab(expression(paste("Corticosterone ng/", mu, "l"))) + ggtitle("Adult Males")
+      
+      p3 <- ggplot(data = stress_n, mapping = aes(x = t_db_av, y = neg_fb, col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") +  
+        theme_classic() + xlab("Avg Temp Prior Day (C)") +
+        ylab(expression(paste("Corticosterone ng/", mu, "l"))) + ggtitle("Nestlings")
+      
+      g1 <- ggarrange(p1, p2, p3, ncol = 3, nrow = 1)
+      
+      ggsave(here::here("3_r_scripts/fignf3.png"), plot = g1, width = 7.8, height = 2.7, units = "in", device = "png")    
+      
+### NF cort high previous day ----
+      
+      p1 <- ggplot(data = stress_af, mapping = aes(x = t_db_hi, y = neg_fb, col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") + 
+        theme_classic() + xlab("High Temp Prior Day (C)") +
+        ylab(expression(paste("Corticosterone ng/", mu, "l"))) + ggtitle("Adult Females")
+      
+      p2 <- ggplot(data = stress_am, mapping = aes(x = t_db_hi, y = neg_fb, col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") +  
+        theme_classic() + xlab("High Temp Prior Day (C)") +
+        ylab(expression(paste("Corticosterone ng/", mu, "l"))) + ggtitle("Adult Males")
+      
+      p3 <- ggplot(data = stress_n, mapping = aes(x = t_db_hi, y = neg_fb, col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") +  
+        theme_classic() + xlab("High Temp Prior Day (C)") +
+        ylab(expression(paste("Corticosterone ng/", mu, "l"))) + ggtitle("Nestlings")
+      
+      g1 <- ggarrange(p1, p2, p3, ncol = 3, nrow = 1)
+      
+      ggsave(here::here("3_r_scripts/fignf4.png"), plot = g1, width = 7.8, height = 2.7, units = "in", device = "png")  
+      
+### NF avg temp previous 3 days
+
+      p1 <- ggplot(data = stress_af, mapping = aes(x = t_3b_av, y = neg_fb, col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") + 
+        theme_classic() + xlab("Average Prior 3 Days (C)") +
+        ylab(expression(paste("Corticosterone ng/", mu, "l"))) + ggtitle("Adult Females")
+      
+      p2 <- ggplot(data = stress_am, mapping = aes(x = t_3b_av, y = neg_fb, col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") +  
+        theme_classic() + xlab("Average Prior 3 Days (C)") +
+        ylab(expression(paste("Corticosterone ng/", mu, "l"))) + ggtitle("Adult Males")
+      
+      p3 <- ggplot(data = stress_n, mapping = aes(x = t_3b_av, y = neg_fb, col = "slateblue")) +
+        geom_point(col = "slateblue", size = 0.6, alpha = 0.6) + geom_smooth(col = "coral3", method = "loess") +  
+        theme_classic() + xlab("Average Prior 3 Days (C)") +
+        ylab(expression(paste("Corticosterone ng/", mu, "l"))) + ggtitle("Nestlings")
+      
+      g1 <- ggarrange(p1, p2, p3, ncol = 3, nrow = 1)
+      
+      ggsave(here::here("3_r_scripts/fignf5.png"), plot = g1, width = 7.8, height = 2.7, units = "in", device = "png")  
+      

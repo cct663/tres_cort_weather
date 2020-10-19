@@ -410,3 +410,35 @@ m
 ### Figure: log dex cort vs. prior 3 days
 
 ![](fig8d.png)\
+
+# Negative Feedback
+
+## Temperature around Capture
+
+### Figure: feedback vs. immediate temp
+
+![](fignf1.png)\
+
+## Average temperature night before capture
+
+### Figure: feedback vs. night before
+
+![](fignf2.png)\
+
+## Average temperature day before capture
+
+### Figure: feedback vs. avg day before
+
+![](fignf3.png)\
+
+## High temperature day before capture
+
+### Figure: feedback vs. high day before
+
+![](fignf4.png)\
+
+## Average temperature prior 3 days
+
+### Figure: feedback vs. prior 3 days
+
+![](fignf5.png)\
